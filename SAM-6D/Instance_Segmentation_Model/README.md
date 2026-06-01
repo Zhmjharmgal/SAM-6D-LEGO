@@ -7,17 +7,12 @@ The code has been tested with
 - pytorch 2.0.0
 - CUDA 11.3
 
-Create conda environment:
+Create the `uv` environment from the project root:
 
 ```
-conda env create -f environment.yml
-conda activate sam6d-ism
-
-# for using SAM
-pip install git+https://github.com/facebookresearch/segment-anything.git
-
-# for using fastSAM
-pip install ultralytics==8.0.135
+cd ..
+uv sync
+cd Instance_Segmentation_Model
 ```
 
 
@@ -30,17 +25,17 @@ Please refer to [[link](https://github.com/JiehongLin/SAM-6D/tree/main/SAM-6D/Da
 
 Download model weights of [Segmenting Anything](https://github.com/facebookresearch/segment-anything):
 ```
-python download_sam.py
+uv run python download_sam.py
 ```
 
 Download model weights of [Fast Segmenting Anything](https://github.com/CASIA-IVA-Lab/FastSAM):
 ```
-python download_fastsam.py
+uv run python download_fastsam.py
 ```
 
 Download model weights of ViT pre-trained by [DINOv2](https://github.com/facebookresearch/dinov2):
 ```
-python download_dinov2.py
+uv run python download_dinov2.py
 ```
 
 
@@ -53,10 +48,10 @@ To evaluate the model on BOP datasets, please run the following commands:
 export CUDA_VISIBLE_DEVICES=0
 
 # with sam
-python run_inference.py dataset_name=$DATASET
+uv run python run_inference.py dataset_name=$DATASET
 
 # with fastsam
-python run_inference.py dataset_name=$DATASET model=ISM_fastsam
+uv run python run_inference.py dataset_name=$DATASET model=ISM_fastsam
 ```
 
 The string "DATASET" could be set as `lmo`, `icbin`, `itodd`, `hb`, `tless`, `tudl` or `ycbv`.

@@ -1,0 +1,63 @@
+[project]
+name = "sam-6d-env"
+version = "0.1.0"
+description = "uv-managed runtime environment for SAM-6D"
+requires-python = "==3.9.*"
+dependencies = [
+    "numpy<2",
+    "setuptools<81",
+    "torch==2.7.1",
+    "torchvision==0.22.1",
+    "fvcore",
+    "iopath",
+    "xformers",
+    "torchmetrics==0.10.3",
+    "blenderproc==2.6.1",
+    "opencv-python",
+    "matplotlib",
+    "onnx",
+    "onnxruntime",
+    "scipy",
+    "ffmpeg",
+    "omegaconf",
+    "ruamel.yaml",
+    "hydra-colorlog",
+    "hydra-core",
+    "gdown",
+    "pandas",
+    "imageio",
+    "pyrender",
+    "pytorch-lightning==1.8.1",
+    "pycocotools",
+    "distinctipy",
+    "segment-anything @ git+https://github.com/facebookresearch/segment-anything.git",
+    "ultralytics==8.0.135",
+    "timm",
+    "gorilla-core==0.2.7.8",
+    "trimesh==4.0.8",
+    "gpustat==1.0.0",
+    "imgaug",
+    "einops",
+]
+
+[tool.uv]
+package = false
+environments = [
+    "sys_platform == 'linux' and platform_machine == 'x86_64'",
+]
+
+[[tool.uv.index]]
+name = "pytorch-cu128"
+url = "https://download.pytorch.org/whl/cu128"
+explicit = true
+
+[tool.uv.sources]
+torch = [
+    { index = "pytorch-cu128", marker = "sys_platform == 'linux'" },
+]
+torchvision = [
+    { index = "pytorch-cu128", marker = "sys_platform == 'linux'" },
+]
+xformers = [
+    { index = "pytorch-cu128", marker = "sys_platform == 'linux'" },
+]

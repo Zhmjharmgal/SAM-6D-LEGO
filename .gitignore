@@ -1,0 +1,7 @@
+SAM-6D/.cache/
+SAM-6D/.venv/
+SAM-6D/**/checkpoints/
+SAM-6D/**/build/
+SAM-6D/Data/*/outputs/
+__pycache__/
+*.py[cod]

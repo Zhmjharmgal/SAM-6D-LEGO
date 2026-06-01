@@ -37,11 +37,17 @@ Please clone the repository locally:
 ```
 git clone https://github.com/JiehongLin/SAM-6D.git
 ```
-Install the environment and download the model checkpoints:
+Install the environment and download the model checkpoints with `uv`:
 ```
 cd SAM-6D
-sh prepare.sh
+uv sync
+uv pip install --no-build-isolation ./Pose_Estimation_Model/model/pointnet2
+uv run python Instance_Segmentation_Model/download_sam.py
+uv run python Instance_Segmentation_Model/download_fastsam.py
+uv run python Instance_Segmentation_Model/download_dinov2.py
+uv run python Pose_Estimation_Model/download_sam6d-pem.py
 ```
+Or run the same steps with `sh prepare_uv.sh`.
 We also provide a [docker image](https://hub.docker.com/r/lihualiu/sam-6d/tags) for convenience.
 
 ### 2. Evaluation on the custom data
@@ -55,7 +61,7 @@ export OUTPUT_DIR=Data/Example/outputs         # path to a pre-defined file for 
 
 # run inference
 cd SAM-6D
-sh demo.sh
+uv run sh demo.sh
 ```
 
 
@@ -82,4 +88,3 @@ Lihua Liu: [lihualiu.scut@gmail.com](mailto:lihualiu.scut@gmail.com)
 Dekun Lu: [derkunlu@gmail.com](mailto:derkunlu@gmail.com)
 
 Kui Jia:  [kuijia@gmail.com](kuijia@gmail.com)
-
