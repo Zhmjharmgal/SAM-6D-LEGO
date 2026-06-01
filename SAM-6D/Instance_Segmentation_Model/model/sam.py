@@ -1,18 +1,19 @@
+import logging
+import os.path as osp
+from typing import Any, Dict, List
+
+import cv2
+import numpy as np
+import torch
+import torch.nn.functional as F
 from segment_anything import (
-    sam_model_registry,
-    SamPredictor,
     SamAutomaticMaskGenerator,
+    SamPredictor,
+    sam_model_registry,
 )
 from segment_anything.modeling import Sam
 from segment_anything.utils.amg import MaskData, generate_crop_boxes, rle_to_mask
-import logging
-import numpy as np
-import torch
 from torchvision.ops.boxes import batched_nms, box_area  # type: ignore
-import os.path as osp
-from typing import Any, Dict, List, Optional, Tuple
-import cv2
-import torch.nn.functional as F
 
 pretrained_weight_dict = {
     "vit_l": "sam_vit_l_0b3195.pth",  # 1250MB
@@ -69,16 +70,17 @@ class CustomSamAutomaticMaskGenerator(SamAutomaticMaskGenerator):
             stability_score_thresh=stability_score_thresh,
             box_nms_thresh=box_nms_thresh,
             crop_overlap_ratio=crop_overlap_ratio,
-            pred_iou_thresh=pred_iou_thresh
+            pred_iou_thresh=pred_iou_thresh,
         )
         self.segmentor_width_size = segmentor_width_size
-        logging.info(f"Init CustomSamAutomaticMaskGenerator done!")
+        logging.info("Init CustomSamAutomaticMaskGenerator done!")
 
     def preprocess_resize(self, image: np.ndarray):
         orig_size = image.shape[:2]
         height_size = int(self.segmentor_width_size * orig_size[0] / orig_size[1])
         resized_image = cv2.resize(
-            image.copy(), (self.segmentor_width_size, height_size)  # (width, height)
+            image.copy(),
+            (self.segmentor_width_size, height_size),  # (width, height)
         )
         return resized_image
 
@@ -117,7 +119,6 @@ class CustomSamAutomaticMaskGenerator(SamAutomaticMaskGenerator):
         if self.segmentor_width_size is not None:
             mask_data = self.postprocess_resize(mask_data, orig_size)
         return mask_data
-
     def _generate_masks(self, image: np.ndarray) -> MaskData:
         orig_size = image.shape[:2]
         crop_boxes, layer_idxs = generate_crop_boxes(

@@ -1,25 +1,24 @@
-import torch
-import torchvision.transforms as T
-from tqdm import tqdm
-import numpy as np
-from PIL import Image
+import glob
 import logging
+import multiprocessing
 import os
 import os.path as osp
-from torchvision.utils import make_grid, save_image
-import pytorch_lightning as pl
-from utils.inout import save_json, load_json, save_json_bop23
-from model.utils import BatchedData, Detections, convert_npz_to_json
-from hydra.utils import instantiate
 import time
-import glob
 from functools import partial
-import multiprocessing
+
+import numpy as np
+import pytorch_lightning as pl
+import torch
+import torchvision.transforms as T
 import trimesh
-from model.loss import MaskedPatch_MatrixSimilarity
-from utils.trimesh_utils import depth_image_to_pointcloud_translate_torch
+from tqdm import tqdm
+from utils.bbox_utils import compute_iou
+from utils.inout import save_json_bop23
 from utils.poses.pose_utils import get_obj_poses_from_template_level
-from utils.bbox_utils import xyxy_to_xywh, compute_iou
+from utils.trimesh_utils import depth_image_to_pointcloud_translate_torch
+
+from model.loss import MaskedPatch_MatrixSimilarity
+from model.utils import BatchedData, Detections, convert_npz_to_json
 
 
 class Instance_Segmentation_Model(pl.LightningModule):
@@ -60,7 +59,7 @@ class Instance_Segmentation_Model(pl.LightningModule):
                 ),
             ]
         )
-        logging.info(f"Init CNOS done!")
+        logging.info("Init CNOS done!")
 
     def set_reference_objects(self):
         os.makedirs(
@@ -72,9 +71,11 @@ class Instance_Segmentation_Model(pl.LightningModule):
         self.ref_data = {
             "descriptors": BatchedData(None),
             "appe_descriptors": BatchedData(None),
-                         }
+        }
         descriptors_path = osp.join(self.ref_dataset.template_dir, "descriptors.pth")
-        appe_descriptors_path = osp.join(self.ref_dataset.template_dir, "descriptors_appe.pth")
+        appe_descriptors_path = osp.join(
+            self.ref_dataset.template_dir, "descriptors_appe.pth"
+        )
 
         # Loading main descriptors
         if self.onboarding_config.rendering_type == "pbr":
@@ -108,7 +109,9 @@ class Instance_Segmentation_Model(pl.LightningModule):
             os.path.exists(appe_descriptors_path)
             and not self.onboarding_config.reset_descriptors
         ):
-            self.ref_data["appe_descriptors"] = torch.load(appe_descriptors_path).to(self.device)
+            self.ref_data["appe_descriptors"] = torch.load(appe_descriptors_path).to(
+                self.device
+            )
         else:
             for idx in tqdm(
                 range(len(self.ref_dataset)),
@@ -129,20 +132,20 @@ class Instance_Segmentation_Model(pl.LightningModule):
 
         end_time = time.time()
         logging.info(
-            f"Runtime: {end_time-start_time:.02f}s, Descriptors shape: {self.ref_data['descriptors'].shape}, \
+            f"Runtime: {end_time - start_time:.02f}s, Descriptors shape: {self.ref_data['descriptors'].shape}, \
             Appearance descriptors shape: {self.ref_data['appe_descriptors'].shape}"
         )
 
     def set_reference_object_pointcloud(self):
         """
-            Loading the pointclouds of reference objects: (N_object, N_pointcloud, 3)
-            N_pointcloud: the number of points sampled from the reference object mesh.
+        Loading the pointclouds of reference objects: (N_object, N_pointcloud, 3)
+        N_pointcloud: the number of points sampled from the reference object mesh.
         """
         os.makedirs(
             osp.join(self.log_dir, f"predictions/{self.dataset_name}"), exist_ok=True
         )
         logging.info("Initializing reference objects point cloud ...")
-        
+
         start_time = time.time()
         pointcloud = BatchedData(None)
         pointcloud_path = osp.join(self.ref_dataset.template_dir, "pointcloud.pth")
@@ -153,19 +156,27 @@ class Instance_Segmentation_Model(pl.LightningModule):
             os.path.exists(obj_pose_path)
             and not self.onboarding_config.reset_descriptors
         ):
-            poses = torch.tensor(np.load(obj_pose_path)).to(self.device).to(torch.float32) # N_all_template x 4 x 4
+            poses = (
+                torch.tensor(np.load(obj_pose_path)).to(self.device).to(torch.float32)
+            )  # N_all_template x 4 x 4
         else:
-            template_poses = get_obj_poses_from_template_level(level=2, pose_distribution="all")
+            template_poses = get_obj_poses_from_template_level(
+                level=2, pose_distribution="all"
+            )
             template_poses[:, :3, 3] *= 0.4
             poses = torch.tensor(template_poses).to(self.device).to(torch.float32)
             np.save(obj_pose_path, template_poses)
-        
-        self.ref_data["poses"] = poses[self.ref_dataset.index_templates, :, :] # N_template x 4 x 4
+
+        self.ref_data["poses"] = poses[
+            self.ref_dataset.index_templates, :, :
+        ]  # N_template x 4 x 4
         if (
             os.path.exists(pointcloud_path)
             and not self.onboarding_config.reset_descriptors
         ):
-            self.ref_data["pointcloud"] = torch.load(pointcloud_path, map_location="cuda:0").to(self.device)
+            self.ref_data["pointcloud"] = torch.load(
+                pointcloud_path, map_location="cuda:0"
+            ).to(self.device)
         else:
             mesh_path = osp.join(self.ref_dataset.root_dir, "models")
             if not os.path.exists(mesh_path):
@@ -180,8 +191,12 @@ class Instance_Segmentation_Model(pl.LightningModule):
                     pc_id = all_pc_idx[idx]
                 else:
                     pc_id = idx + 1
-                mesh = trimesh.load_mesh(os.path.join(mesh_path, f'obj_{(pc_id):06d}.ply'))
-                model_points = mesh.sample(self.pointcloud_sample_num).astype(np.float32) / 1000.0
+                mesh = trimesh.load_mesh(
+                    os.path.join(mesh_path, f"obj_{(pc_id):06d}.ply")
+                )
+                model_points = (
+                    mesh.sample(self.pointcloud_sample_num).astype(np.float32) / 1000.0
+                )
                 pointcloud.append(torch.tensor(model_points))
 
             pointcloud.stack()  # N_objects x N_pointcloud x 3
@@ -192,7 +207,7 @@ class Instance_Segmentation_Model(pl.LightningModule):
 
         end_time = time.time()
         logging.info(
-            f"Runtime: {end_time-start_time:.02f}s, Pointcloud shape: {self.ref_data['pointcloud'].shape}"
+            f"Runtime: {end_time - start_time:.02f}s, Pointcloud shape: {self.ref_data['pointcloud'].shape}"
         )
 
     def best_template_pose(self, scores, pred_idx_objects):
@@ -202,38 +217,55 @@ class Instance_Segmentation_Model(pl.LightningModule):
 
         assert N_query == pred_idx_objects.shape[0], "Prediction num != Query num"
 
-        best_template_idx = torch.gather(best_template_idxes, dim=1, index=pred_idx_objects)[:, 0]
+        best_template_idx = torch.gather(
+            best_template_idxes, dim=1, index=pred_idx_objects
+        )[:, 0]
 
         return best_template_idx
 
     def project_template_to_image(self, best_pose, pred_object_idx, batch, proposals):
         """
-        Obtain the RT of the best template, then project the reference pointclouds to query image, 
+        Obtain the RT of the best template, then project the reference pointclouds to query image,
         getting the bbox of projected pointcloud from the image.
         """
 
-        pose_R = self.ref_data["poses"][best_pose, 0:3, 0:3] # N_query x 3 x 3
-        select_pc = self.ref_data["pointcloud"][pred_object_idx, ...] # N_query x N_pointcloud x 3
+        pose_R = self.ref_data["poses"][best_pose, 0:3, 0:3]  # N_query x 3 x 3
+        select_pc = self.ref_data["pointcloud"][
+            pred_object_idx, ...
+        ]  # N_query x N_pointcloud x 3
         (N_query, N_pointcloud, _) = select_pc.shape
 
         # translate object_selected pointcloud by the selected best pose and camera coordinate
         posed_pc = torch.matmul(pose_R, select_pc.permute(0, 2, 1)).permute(0, 2, 1)
-        translate = self.Calculate_the_query_translation(proposals, batch["depth"][0], batch["cam_intrinsic"][0], batch['depth_scale'])
+        translate = self.Calculate_the_query_translation(
+            proposals,
+            batch["depth"][0],
+            batch["cam_intrinsic"][0],
+            batch["depth_scale"],
+        )
         posed_pc = posed_pc + translate[:, None, :].repeat(1, N_pointcloud, 1)
 
         # project the pointcloud to the image
-        cam_instrinsic = batch["cam_intrinsic"][0][None, ...].repeat(N_query, 1, 1).to(torch.float32)
-        image_homo = torch.bmm(cam_instrinsic, posed_pc.permute(0, 2, 1)).permute(0, 2, 1)
-        image_vu = (image_homo / image_homo[:, :, -1][:, :, None])[:, :, 0:2].to(torch.int) # N_query x N_pointcloud x 2
+        cam_instrinsic = (
+            batch["cam_intrinsic"][0][None, ...].repeat(N_query, 1, 1).to(torch.float32)
+        )
+        image_homo = torch.bmm(cam_instrinsic, posed_pc.permute(0, 2, 1)).permute(
+            0, 2, 1
+        )
+        image_vu = (image_homo / image_homo[:, :, -1][:, :, None])[:, :, 0:2].to(
+            torch.int
+        )  # N_query x N_pointcloud x 2
         (imageH, imageW) = batch["depth"][0].shape
         image_vu[:, :, 0].clamp_(min=0, max=imageW - 1)
         image_vu[:, :, 1].clamp_(min=0, max=imageH - 1)
 
         return image_vu
 
-    def Calculate_the_query_translation(self, proposal, depth, cam_intrinsic, depth_scale):
+    def Calculate_the_query_translation(
+        self, proposal, depth, cam_intrinsic, depth_scale
+    ):
         """
-        Calculate the translation amount from the origin of the object coordinate system to the camera coordinate system. 
+        Calculate the translation amount from the origin of the object coordinate system to the camera coordinate system.
         Cut out the depth using the provided mask and calculate the mean as the translation.
         proposal: N_query x imageH x imageW
         depth: imageH x imageW
@@ -295,23 +327,40 @@ class Instance_Segmentation_Model(pl.LightningModule):
 
         return idx_selected_proposals, pred_idx_objects, semantic_score, best_template
 
-    def compute_appearance_score(self, best_pose, pred_objects_idx, qurey_appe_descriptors):
+    def compute_appearance_score(
+        self, best_pose, pred_objects_idx, qurey_appe_descriptors
+    ):
         """
         Based on the best template, calculate appearance similarity indicated by appearance score
         """
-        con_idx = torch.concatenate((pred_objects_idx[None, :], best_pose[None, :]), dim=0)
-        ref_appe_descriptors = self.ref_data["appe_descriptors"][con_idx[0, ...], con_idx[1, ...], ...] # N_query x N_patch x N_feature
+        con_idx = torch.concatenate(
+            (pred_objects_idx[None, :], best_pose[None, :]), dim=0
+        )
+        ref_appe_descriptors = self.ref_data["appe_descriptors"][
+            con_idx[0, ...], con_idx[1, ...], ...
+        ]  # N_query x N_patch x N_feature
 
         aux_metric = MaskedPatch_MatrixSimilarity(metric="cosine", chunk_size=64)
-        appe_scores = aux_metric.compute_straight(qurey_appe_descriptors, ref_appe_descriptors)
+        appe_scores = aux_metric.compute_straight(
+            qurey_appe_descriptors, ref_appe_descriptors
+        )
 
         return appe_scores, ref_appe_descriptors
 
-    def compute_geometric_score(self, image_uv, proposals, appe_descriptors, ref_aux_descriptor, visible_thred=0.5):
+    def compute_geometric_score(
+        self,
+        image_uv,
+        proposals,
+        appe_descriptors,
+        ref_aux_descriptor,
+        visible_thred=0.5,
+    ):
 
         aux_metric = MaskedPatch_MatrixSimilarity(metric="cosine", chunk_size=64)
-        visible_ratio = aux_metric.compute_visible_ratio(appe_descriptors, ref_aux_descriptor, visible_thred)
-        
+        visible_ratio = aux_metric.compute_visible_ratio(
+            appe_descriptors, ref_aux_descriptor, visible_thred
+        )
+
         # IoU calculation
         y1x1 = torch.min(image_uv, dim=1).values
         y2x2 = torch.max(image_uv, dim=1).values
@@ -336,10 +385,7 @@ class Instance_Segmentation_Model(pl.LightningModule):
         assert batch["image"].shape[0] == 1, "Batch size must be 1"
 
         image_np = (
-            self.inv_rgb_transform(batch["image"][0])
-            .cpu()
-            .numpy()
-            .transpose(1, 2, 0)
+            self.inv_rgb_transform(batch["image"][0]).cpu().numpy().transpose(1, 2, 0)
         )
         image_np = np.uint8(image_np.clip(0, 1) * 255)
 
@@ -354,7 +400,9 @@ class Instance_Segmentation_Model(pl.LightningModule):
         )
 
         # compute semantic descriptors and appearance descriptors for query proposals
-        query_decriptors, query_appe_descriptors = self.descriptor_model(image_np, detections)
+        query_decriptors, query_appe_descriptors = self.descriptor_model(
+            image_np, detections
+        )
         proposal_stage_end_time = time.time()
 
         # matching descriptors
@@ -371,17 +419,27 @@ class Instance_Segmentation_Model(pl.LightningModule):
         query_appe_descriptors = query_appe_descriptors[idx_selected_proposals, :]
 
         # compute the appearance score
-        appe_scores, ref_aux_descriptor= self.compute_appearance_score(best_template, pred_idx_objects, query_appe_descriptors)
+        appe_scores, ref_aux_descriptor = self.compute_appearance_score(
+            best_template, pred_idx_objects, query_appe_descriptors
+        )
 
         # compute the geometric score
-        image_uv = self.project_template_to_image(best_template, pred_idx_objects, batch, detections.masks)
+        image_uv = self.project_template_to_image(
+            best_template, pred_idx_objects, batch, detections.masks
+        )
 
         geometric_score, visible_ratio = self.compute_geometric_score(
-            image_uv, detections, query_appe_descriptors, ref_aux_descriptor, visible_thred=self.visible_thred
-            )
+            image_uv,
+            detections,
+            query_appe_descriptors,
+            ref_aux_descriptor,
+            visible_thred=self.visible_thred,
+        )
 
         # final score
-        final_score = (semantic_score + appe_scores + geometric_score*visible_ratio) / (1 + 1 + visible_ratio)
+        final_score = (
+            semantic_score + appe_scores + geometric_score * visible_ratio
+        ) / (1 + 1 + visible_ratio)
 
         detections.add_attribute("scores", final_score)
         detections.add_attribute("object_ids", pred_idx_objects)

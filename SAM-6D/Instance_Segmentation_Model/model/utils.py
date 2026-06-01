@@ -1,12 +1,11 @@
-import torch
-import numpy as np
-import torchvision
-from torchvision.ops.boxes import batched_nms, box_area
 import logging
-from utils.inout import save_json, load_json, save_npz
-from utils.bbox_utils import xyxy_to_xywh, xywh_to_xyxy, force_binary_mask
-import time
-from PIL import Image
+
+import numpy as np
+import torch
+import torchvision
+from torchvision.ops.boxes import box_area
+from utils.bbox_utils import force_binary_mask, xywh_to_xyxy, xyxy_to_xywh
+from utils.inout import save_npz
 
 lmo_object_ids = np.array(
     [
@@ -137,9 +136,9 @@ class Detections:
         box_size = len(self.boxes)
         score_size = len(self.scores)
         object_id_size = len(self.object_ids)
-        assert (
-            mask_size == box_size == score_size == object_id_size
-        ), f"Size mismatch {mask_size} {box_size} {score_size} {object_id_size}"
+        assert mask_size == box_size == score_size == object_id_size, (
+            f"Size mismatch {mask_size} {box_size} {score_size} {object_id_size}"
+        )
 
     def to_numpy(self):
         for key in self.keys:
