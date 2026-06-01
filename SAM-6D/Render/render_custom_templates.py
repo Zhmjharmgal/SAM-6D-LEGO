@@ -1,4 +1,5 @@
 import blenderproc as bproc
+from blenderproc.python.types.StructUtility import Struct
 
 import os
 import argparse
@@ -19,6 +20,20 @@ render_dir = os.path.dirname(os.path.abspath(__file__))
 cnos_cam_fpath = os.path.join(render_dir, '../Instance_Segmentation_Model/utils/poses/predefined_poses/cam_poses_level0.npy')
 
 bproc.init()
+
+# BlenderProc 2.6.1 can keep weak references to removed Materials after
+# cleanup/reload cycles. Its default validity check misses those references,
+# and render_nocs() then crashes while creating an undo checkpoint.
+def _struct_is_valid(self):
+    try:
+        self.blender_obj.name
+        return True
+    except ReferenceError:
+        return False
+
+
+Struct.is_valid = _struct_is_valid
+
 
 def get_norm_info(mesh_path):
     mesh = trimesh.load(mesh_path, force='mesh')
